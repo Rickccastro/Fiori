@@ -71,15 +71,15 @@ CLASS ZCL_ZOV_FIORI_001_DPC_EXT IMPLEMENTATION.
 
     MOVE-CORRESPONDING er_entity TO ls_header.
 
-    ls_header-created_at = sy-datum.
+    ls_header-CREATED_AT = sy-datum.
     ls_header-created_hour = sy-uzeit.
-    ls_header-created_by = sy-uname.
+    ls_header-createdby = sy-uname.
 
-    SELECT SINGLE MAX( ORDER_ID )
+    SELECT SINGLE MAX( ORDERID )
       INTO ld_lastid
       FROM ZTFIORI_HEADER.
 
-    ls_header-order_id = ld_lastid + 1.
+    ls_header-orderid = ld_lastid + 1.
 
     INSERT ZTFIORI_HEADER FROM ls_header.
 
@@ -111,9 +111,59 @@ CLASS ZCL_ZOV_FIORI_001_DPC_EXT IMPLEMENTATION.
   endmethod.
 
 
-  method HEADERSET_GET_ENTITY.
+  METHOD headerset_get_entity.
+    DATA: lv_orderid TYPE ztfiori_header-orderid,
+          ls_key_tab LIKE LINE OF it_key_tab,
+          ls_header  TYPE ztfiori_header.
 
-  endmethod.
+    DATA(lo_msg) = me->/iwbep/if_mgw_conv_srv_runtime~get_message_container( ).
+
+
+    READ TABLE it_key_tab INTO ls_key_tab WITH KEY name = 'OrderId'.
+
+    IF sy-subrc NE 0.
+      lo_msg->add_message_text_only(
+        EXPORTING
+            iv_msg_type = 'E'
+            iv_msg_text = 'Uninformed Order Id'
+      ).
+
+      RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+        EXPORTING
+          message_container = lo_msg.
+
+    ENDIF.
+
+    lv_orderid = ls_key_tab-value.
+
+    SELECT SINGLE * INTO ls_header FROM ztfiori_header WHERE orderid = lv_orderid.
+
+    IF sy-subrc EQ 0.
+
+      MOVE-CORRESPONDING ls_header TO er_entity.
+
+      CONVERT DATE ls_header-created_at
+         TIME ls_header-created_hour
+    INTO TIME STAMP er_entity-createdat
+    TIME ZONE 'UTC'. "sy-zonlo.
+
+    ELSE.
+      lo_msg->add_message_text_only(
+        EXPORTING
+          iv_msg_type = 'E'
+          iv_msg_text = 'Order Id Not Found'
+      ).
+
+      RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+        EXPORTING
+          message_container = lo_msg.
+
+    ENDIF.
+
+
+
+
+  ENDMETHOD.
 
 
   method HEADERSET_GET_ENTITYSET.
@@ -188,9 +238,64 @@ CLASS ZCL_ZOV_FIORI_001_DPC_EXT IMPLEMENTATION.
   endmethod.
 
 
-  method ITEMSET_GET_ENTITY.
+  METHOD itemset_get_entity.
+    DATA: ls_key_tab LIKE LINE OF it_key_tab,
+          ls_item    TYPE ztfiori_item,
+          lv_error   TYPE flag.
 
-  endmethod.
+    DATA(lo_msg) = me->/iwbep/if_mgw_conv_srv_runtime~get_message_container( ).
+
+    " input
+    READ TABLE it_key_tab INTO ls_key_tab WITH KEY name = 'OrdemId'.
+    IF sy-subrc <> 0.
+      lv_error = 'X'.
+      lo_msg->add_message_text_only(
+        EXPORTING
+          iv_msg_type = 'E'
+          iv_msg_text = 'Id da ordem não informado'
+      ).
+    ENDIF.
+    ls_item-orderid = ls_key_tab-value.
+
+    READ TABLE it_key_tab INTO ls_key_tab WITH KEY name = 'ItemId'.
+    IF sy-subrc <> 0.
+      lv_error = 'X'.
+      lo_msg->add_message_text_only(
+        EXPORTING
+          iv_msg_type = 'E'
+          iv_msg_text = 'Id do item não informado'
+      ).
+    ENDIF.
+    ls_item-itemid = ls_key_tab-value.
+
+    IF lv_error = 'X'.
+      RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+        EXPORTING
+          message_container = lo_msg.
+    ENDIF.
+
+    SELECT SINGLE *
+      INTO ls_item
+      FROM ztfiori_item
+     WHERE orderid = ls_item-orderid
+       AND itemid  = ls_item-itemid.
+
+    IF sy-subrc = 0.
+      MOVE-CORRESPONDING ls_item TO er_entity.
+    ELSE.
+      lo_msg->add_message_text_only(
+        EXPORTING
+          iv_msg_type = 'E'
+          iv_msg_text = 'Item não encontrado'
+      ).
+
+      RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+        EXPORTING
+          message_container = lo_msg.
+    ENDIF.
+
+
+  ENDMETHOD.
 
 
   METHOD itemset_get_entityset.
@@ -242,5 +347,26 @@ CLASS ZCL_ZOV_FIORI_001_DPC_EXT IMPLEMENTATION.
 
   method MESSAGESET_UPDATE_ENTITY.
 
+  endmethod.
+
+
+  method /IWBEP/IF_MGW_APPL_SRV_RUNTIME~CREATE_DEEP_ENTITY.
+**TRY.
+*CALL METHOD SUPER->/IWBEP/IF_MGW_APPL_SRV_RUNTIME~CREATE_DEEP_ENTITY
+*  EXPORTING
+**    iv_entity_name          =
+**    iv_entity_set_name      =
+**    iv_source_name          =
+*    IO_DATA_PROVIDER        =
+**    it_key_tab              =
+**    it_navigation_path      =
+*    IO_EXPAND               =
+**    io_tech_request_context =
+**  IMPORTING
+**    er_deep_entity          =
+*    .
+**  CATCH /iwbep/cx_mgw_busi_exception.
+**  CATCH /iwbep/cx_mgw_tech_exception.
+**ENDTRY.
   endmethod.
 ENDCLASS.
